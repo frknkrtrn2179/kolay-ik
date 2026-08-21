@@ -13,31 +13,20 @@ import { useFocusEffect } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../context/AuthContext";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Swipeable } from "react-native-gesture-handler";
-
-const RENKLER = {
-  arkaplan: "#FAF6F0",
-  koyuKahve: "#4A3C31",
-  pastelKahve: "#8D7B68",
-  kutuArkaplan: "#FFFFFF",
-  cizgi: "#EBE3D5",
-  onay: "#8A9A5B",
-  red: "#A75D5D",
-  bekliyor: "#C89E78",
-  silKirmizi: "#D65A5A",
-  siyahYariSaydam: "rgba(0, 0, 0, 0.5)", // Pop-up arka planı için
-};
+import { COLORS } from "../../constants/colors";
+import { NotificationCard } from "../../features/notifications/NotificationCard";
+import { LeaveRequest } from "../../types/leave";
 
 export default function Bildirimler() {
   const { aktifKullanici } = useAuth();
-  const [talepler, setTalepler] = useState<any[]>([]);
+  const [talepler, setTalepler] = useState<LeaveRequest[]>([]);
   const [yukleniyor, setYukleniyor] = useState(true);
   const insets = useSafeAreaInsets();
 
   // YÖNETİCİ İŞLEMLERİ İÇİN YENİ STATELER
   const [acikKartId, setAcikKartId] = useState<string | null>(null); // Akordiyon gibi açılacak kart
   const [modalGoster, setModalGoster] = useState(false); // Pop-up görünürlüğü
-  const [islemYapilanTalep, setIslemYapilanTalep] = useState<any>(null); // Hangi talep düzenleniyor?
+  const [islemYapilanTalep, setIslemYapilanTalep] = useState<LeaveRequest | null>(null);
 
   const isYonetici =
     aktifKullanici?.rol === "Yonetici" || aktifKullanici?.rol === "Yönetici";
@@ -108,6 +97,10 @@ export default function Bildirimler() {
 
     // O anki kalan gün sayısını bulalım (Veritabanındaki küçük harfli isme göre)
     const kalanGun = islemYapilanTalep.personel?.kalanizingunu;
+    if (kalanGun === undefined) {
+      Alert.alert("Hata", "Personelin izin bilgisi bulunamadı.");
+      return;
+    }
     let yeniKalanIzin = kalanGun;
 
     // MATEMATİK HESABI
@@ -151,7 +144,9 @@ export default function Bildirimler() {
             ? {
                 ...t,
                 durum: yeniDurum,
-                personel: { ...t.personel, kalanizingunu: yeniKalanIzin },
+                personel: t.personel
+                  ? { ...t.personel, kalanizingunu: yeniKalanIzin }
+                  : undefined,
               }
             : t,
         ),
@@ -169,49 +164,6 @@ export default function Bildirimler() {
     }
   };
 
-  const izinDurumuHesapla = (
-    basTarihi: string,
-    bitTarihi: string,
-    durum: string,
-  ) => {
-    if (durum === "Bekliyor")
-      return { metin: "Yönetici onayı bekleniyor...", renk: RENKLER.bekliyor };
-    if (durum === "Reddedildi")
-      return { metin: "Talebiniz onaylanmadı.", renk: RENKLER.red };
-
-    const bugun = new Date();
-    bugun.setHours(0, 0, 0, 0);
-    const bas = new Date(basTarihi);
-    const bit = new Date(bitTarihi);
-    const baslamasinaKalan = Math.ceil(
-      (bas.getTime() - bugun.getTime()) / (1000 * 60 * 60 * 24),
-    );
-    const bitmesineKalan = Math.ceil(
-      (bit.getTime() - bugun.getTime()) / (1000 * 60 * 60 * 24),
-    );
-
-    if (baslamasinaKalan > 0)
-      return {
-        metin: `Başlamasına ${baslamasinaKalan} gün kaldı.`,
-        renk: RENKLER.onay,
-      };
-    if (bitmesineKalan >= 0)
-      return {
-        metin: `Bitmesine ${bitmesineKalan} gün kaldı.`,
-        renk: RENKLER.onay,
-      };
-    return { metin: "İzin süresi tamamlandı.", renk: RENKLER.pastelKahve };
-  };
-
-  const renderSilButonu = (id: string) => {
-    // Yönetici yana kaydırıp silemez
-    return (
-      <Pressable style={styles.deleteButton} onPress={() => bildirimSil(id)}>
-        <Text style={styles.deleteText}>Sil</Text>
-      </Pressable>
-    );
-  };
-
   // Ekranda gösterilecek içeriği tutacak değişken
   let ekranIcerigi;
 
@@ -220,7 +172,7 @@ export default function Bildirimler() {
     ekranIcerigi = (
       <ActivityIndicator
         size="large"
-        color={RENKLER.pastelKahve}
+        color={COLORS.brown}
         style={{ marginTop: 50 }}
       />
     );
@@ -234,70 +186,19 @@ export default function Bildirimler() {
         data={talepler}
         keyExtractor={(item) => item.id.toString()}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => {
-          const dinamikDurum = isYonetici
-            ? {
-                metin: `Durum: ${item.durum}`,
-                renk: item.durum === "Onaylandı" ? RENKLER.onay : RENKLER.red,
-              }
-            : izinDurumuHesapla(
-                item.baslangic_tarihi,
-                item.bitis_tarihi,
-                item.durum,
-              );
-
-          const isExpanded = acikKartId === item.id;
-
-          return (
-            <Swipeable renderRightActions={() => renderSilButonu(item.id)}>
-              <Pressable
-                style={[styles.card, { borderLeftColor: dinamikDurum.renk }]}
-                onPress={() => {
-                  if (isYonetici) setAcikKartId(isExpanded ? null : item.id);
-                }}
-              >
-                <View style={styles.info}>
-                  {/* YÖNETİCİYSE KİMİN İZNİ OLDUĞUNU YAZ */}
-                  {isYonetici && (
-                    <Text style={styles.personelName}>
-                      {item.personel?.adSoyad || item.personel?.adsoyad}
-                    </Text>
-                  )}
-
-                  <Text style={styles.date}>
-                    {item.baslangic_tarihi} - {item.bitis_tarihi}
-                  </Text>
-                  <Text style={styles.days}>
-                    {item.gunsayisi} Günlük İzin Talebi
-                  </Text>
-                  <Text
-                    style={[styles.statusText, { color: dinamikDurum.renk }]}
-                  >
-                    {dinamikDurum.metin}
-                  </Text>
-                </View>
-
-                {/* YÖNETİCİ TIKLADIĞINDA AÇILAN AKORDİYON KISMI */}
-                {isYonetici && isExpanded && (
-                  <View style={styles.expandedSection}>
-                    <View style={styles.divider} />
-                    <Pressable
-                      style={styles.reevaluateButton}
-                      onPress={() => {
-                        setIslemYapilanTalep(item);
-                        setModalGoster(true);
-                      }}
-                    >
-                      <Text style={styles.reevaluateText}>
-                        Tekrar Değerlendir
-                      </Text>
-                    </Pressable>
-                  </View>
-                )}
-              </Pressable>
-            </Swipeable>
-          );
-        }}
+        renderItem={({ item }) => (
+          <NotificationCard
+            request={item}
+            isManager={isYonetici}
+            isExpanded={acikKartId === item.id}
+            onToggle={() => setAcikKartId(acikKartId === item.id ? null : item.id)}
+            onDelete={() => bildirimSil(item.id)}
+            onReevaluate={() => {
+              setIslemYapilanTalep(item);
+              setModalGoster(true);
+            }}
+          />
+        )}
       />
     );
   }
@@ -336,8 +237,8 @@ export default function Bildirimler() {
                   {
                     backgroundColor:
                       islemYapilanTalep?.durum === "Onaylandı"
-                        ? RENKLER.red
-                        : RENKLER.onay,
+                        ? COLORS.danger
+                        : COLORS.success,
                   },
                 ]}
                 onPress={karariGuncelle}
@@ -360,72 +261,24 @@ export default function Bildirimler() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: RENKLER.arkaplan, padding: 15 },
+  container: { flex: 1, backgroundColor: COLORS.background, padding: 15 },
   emptyText: {
     fontSize: 16,
-    color: RENKLER.pastelKahve,
+    color: COLORS.brown,
     textAlign: "center",
     marginTop: 50,
-  },
-
-  card: {
-    backgroundColor: RENKLER.kutuArkaplan,
-    padding: 18,
-    borderRadius: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: RENKLER.cizgi,
-    borderLeftWidth: 5,
-  },
-  info: { flex: 1 },
-  personelName: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: RENKLER.koyuKahve,
-    marginBottom: 4,
-  },
-  date: { fontSize: 15, fontWeight: "bold", color: RENKLER.koyuKahve },
-  days: { fontSize: 14, color: RENKLER.pastelKahve, marginVertical: 6 },
-  statusText: { fontSize: 14, fontWeight: "bold", marginTop: 4 },
-
-  deleteButton: {
-    backgroundColor: RENKLER.silKirmizi,
-    justifyContent: "center",
-    alignItems: "center",
-    width: 80,
-    borderRadius: 10,
-    marginBottom: 12,
-    marginLeft: 10,
-  },
-  deleteText: { color: "white", fontWeight: "bold", fontSize: 16 },
-
-  // AKORDİYON STİLLERİ
-  expandedSection: { marginTop: 15 },
-  divider: { height: 1, backgroundColor: RENKLER.cizgi, marginBottom: 15 },
-  reevaluateButton: {
-    backgroundColor: RENKLER.arkaplan,
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: RENKLER.pastelKahve,
-  },
-  reevaluateText: {
-    color: RENKLER.koyuKahve,
-    fontWeight: "bold",
-    fontSize: 15,
   },
 
   // POP-UP (MODAL) STİLLERİ
   modalOverlay: {
     flex: 1,
-    backgroundColor: RENKLER.siyahYariSaydam,
+    backgroundColor: COLORS.overlay,
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
   },
   modalBox: {
-    backgroundColor: RENKLER.kutuArkaplan,
+    backgroundColor: COLORS.surface,
     width: "100%",
     padding: 25,
     borderRadius: 15,
@@ -435,10 +288,10 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: RENKLER.koyuKahve,
+    color: COLORS.darkBrown,
     marginBottom: 10,
   },
-  modalText: { fontSize: 16, color: RENKLER.pastelKahve, marginBottom: 25 },
+  modalText: { fontSize: 16, color: COLORS.brown, marginBottom: 25 },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -449,13 +302,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: "center",
-    backgroundColor: RENKLER.arkaplan,
+    backgroundColor: COLORS.background,
     borderWidth: 1,
-    borderColor: RENKLER.cizgi,
+    borderColor: COLORS.border,
     marginRight: 10,
   },
   modalCancelText: {
-    color: RENKLER.pastelKahve,
+    color: COLORS.brown,
     fontWeight: "bold",
     fontSize: 15,
   },
