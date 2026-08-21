@@ -5,7 +5,7 @@ import {
   Pressable,
   StyleSheet,
   Alert,
-  ActivityIndicator, // Yükleniyor ikonu için bunu ekledik
+  ActivityIndicator, // Yükleniyor ikonu
 } from "react-native";
 import { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
@@ -14,27 +14,26 @@ import { router } from "expo-router";
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [sifre, setSifre] = useState("");
-  const [yukleniyor, setYukleniyor] = useState(false); // İnternet yavaşsa kullanıcı beklediğini anlasın diye
+  const [yukleniyor, setYukleniyor] = useState(false); // bekleme state i
 
-  // YENİ: Sadece az önce AuthContext'te yazdığımız 'girisYap' fonksiyonunu çekiyoruz
+  //
   const { girisYap } = useAuth();
 
   const onGirisYap = async () => {
-    // veritabanından cevap gelene kadar bekle ----------------------<
+    // bilgi giriş kontrol
     if (!email || !sifre) {
       Alert.alert("Hata", "Lütfen e-posta ve şifre girin.");
       return;
     }
 
-    setYukleniyor(true); // Butonu dönen çarka çeviriyoruz
+    setYukleniyor(true); // buton dönen çark
 
-    // Veritabanına gidip cevabı bekliyoruz (async/await mantığı)
     const sonuc = await girisYap(email, sifre); // veritabanından cevap gelene kadar bekle----------------------<
 
     setYukleniyor(false); // Cevap gelince çarkı durduruyoruz
 
     if (sonuc.basarili) {
-      // Kişi veritabanında varsa ana sayfaya yönlendir
+      // Kişi veritabanında varsa ana sayfaya ("/") yönlendir
       router.replace("/");
     } else {
       // Yoksa veritabanından gelen hata mesajını göster
